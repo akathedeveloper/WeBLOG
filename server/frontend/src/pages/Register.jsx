@@ -18,7 +18,7 @@ const Register = () => {
       e.preventDefault()
       setError('')
       try{
-        const response = await axios.post(`${process.env.REACT_APP_BASE_URL}/users/register`, userData)
+        const response = await axios.post(`${window.location.origin}/api/users/register`, userData)
         const newUser = await response.data
         console.log(newUser)
         if(!newUser){

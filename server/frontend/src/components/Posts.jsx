@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import axios from 'axios'
 import PostItem from './PostItem'
-import Loader from '../components/Loader'
+import Loader from './Loader'
 
 
 
@@ -14,7 +14,7 @@ const Posts = () => {
     const fetchPosts = async () => {
       setIsLoading(true)
       try {
-        const response = await axios.get(`${process.env.REACT_APP_BASE_URL}/posts`)
+        const response = await axios.get(`${window.location.origin}/api/posts`)
         setPosts(response?.data)
       } catch (err) {
         console.log(err)

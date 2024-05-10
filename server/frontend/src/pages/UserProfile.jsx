@@ -32,7 +32,7 @@ const UserProfile = () => {
 
   useEffect(()=>{
     const getUser = async()=>{
-      const response = await axios.get(`${process.env.REACT_APP_BASE_URL}/users/${currentUser.id}`, {withCredentials: true, headers: {Authorization: `Bearer ${token}`}})
+      const response = await axios.get(`${window.location.origin}/api/users/${currentUser.id}`, {withCredentials: true, headers: {Authorization: `Bearer ${token}`}})
       const {name, email, avatar}=response.data
       setName(name)
       setEmail(email)
@@ -46,7 +46,7 @@ const UserProfile = () => {
     try {
       const postData=new FormData()
       postData.set('avatar',avatar)
-      const response = await axios.post(`${process.env.REACT_APP_BASE_URL}/users/change-avatar`, postData, {withCredentials: true, headers: {Authorization: `Bearer ${token}`}})
+      const response = await axios.post(`${window.location.origin}/api/users/change-avatar`, postData, {withCredentials: true, headers: {Authorization: `Bearer ${token}`}})
       setAvatar(response?.data.avatar)
     } 
     catch (error) {
@@ -65,7 +65,7 @@ const UserProfile = () => {
     userData.set('newPassword',newPassword)
     userData.set('confirmNewPassword',confirmNewPassword)
 
-    const response = await axios.patch(`${process.env.REACT_APP_BASE_URL}/users/edit-user`, userData, {withCredentials: true, headers: {Authorization: `Bearer ${token}`}})
+    const response = await axios.patch(`${window.location.origin}/api/users/edit-user`, userData, {withCredentials: true, headers: {Authorization: `Bearer ${token}`}})
     if(response.status==200){
       //log user out
       navigate('/logout')
@@ -84,7 +84,7 @@ const UserProfile = () => {
         <div className="profile__details">
           <div className="avatar__wrapper">
             <div className="profile__avatar">
-              <img src={`${process.env.REACT_APP_ASSETS_URL}/uploads/${avatar}`} alt='' />
+              <img src={`${window.location.origin}/uploads/${avatar}`} alt='' />
             </div>
             {/* Form to update avatar */}
             <form className="avatar__form">

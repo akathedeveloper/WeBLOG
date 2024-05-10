@@ -20,7 +20,7 @@ const PostDetail = () => {
     const getPost = async () =>{
       setIsLoading(true)
       try{
-        const response = await axios.get(`${process.env.REACT_APP_BASE_URL}/posts/${id}`) 
+        const response = await axios.get(`${window.location.origin}/api/posts/${id}`) 
         setPost(response.data)
       }
       catch(error){
@@ -48,7 +48,7 @@ const PostDetail = () => {
         </div>
         <h1>{post.title}</h1>
         <div className="post-detail__thumbnail">
-          <img src={`${process.env.REACT_APP_ASSETS_URL}/uploads/${post.thumbnail}`} alt="" />
+          <img src={`${window.location.origin}/uploads/${post.thumbnail}`} alt="" />
         </div>
         <p dangerouslySetInnerHTML={{__html: post.description}}></p>
       </div>

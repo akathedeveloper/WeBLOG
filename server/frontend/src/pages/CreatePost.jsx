@@ -53,7 +53,7 @@ const CreatePost = () => {
     postData.set('thumbnail', thumbnail)
 
     try {
-      const response = await axios.post(`${process.env.REACT_APP_BASE_URL}/posts`, postData, {withCredentials:true, headers:{Authorization: `Bearer ${token}`}})
+      const response = await axios.post(`${window.location.origin}/api/posts`, postData, {withCredentials:true, headers:{Authorization: `Bearer ${token}`}})
       if(response.status==201){
         return navigate('/')
       }
