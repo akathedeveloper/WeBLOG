@@ -12,7 +12,7 @@ const HttpError = require('../models/errorModel')
 
 
 
-// =========================Creating a post==========================
+// =========================Creating a post=======================
 // Post: api/posts
 //Protected
 
