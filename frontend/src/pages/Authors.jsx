@@ -16,26 +16,50 @@ import {
   FaEye,
   FaBookmark,
   FaStar,
-  FaTrophy
+  FaTrophy,
+  FaExclamationTriangle,
+  FaCloudUploadAlt
 } from 'react-icons/fa'
 
 const Authors = () => {
   const [authors, setAuthors] = useState([])
   const [filteredAuthors, setFilteredAuthors] = useState([])
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [sortBy, setSortBy] = useState('name')
+
+  // Helper function to handle avatar URLs (backward compatibility)
+  const getAvatarUrl = (avatarPath) => {
+    if (!avatarPath) return null
+    
+    // If it's already a full URL (Cloudinary), use it directly
+    if (avatarPath.startsWith('http')) {
+      return avatarPath
+    }
+    
+    // Fallback for old local avatars
+    return `${process.env.REACT_APP_ASSETS_URL}/uploads/${avatarPath}`
+  }
 
   useEffect(() => { 
     const getAuthors = async () => {
       setIsLoading(true)
+      setError('')
       try {
-        const response = await axios.get(`${process.env.REACT_APP_BASE_URL}/users`)
+        const response = await axios.get(`${process.env.REACT_APP_BASE_URL}/users`, {
+          timeout: 10000 // 10 second timeout
+        })
         setAuthors(response.data)
         setFilteredAuthors(response.data)
       } 
       catch (error) {
-        console.log(error)
+        console.error('Error fetching authors:', error)
+        if (error.code === 'ECONNABORTED') {
+          setError('Request timeout. Please check your connection and try again.')
+        } else {
+          setError(error.response?.data?.message || 'Failed to load authors. Please try again.')
+        }
       }
       setIsLoading(false)   
     } 
@@ -115,8 +139,39 @@ const Authors = () => {
       .slice(0, 3)
   }
 
+  const handleRetry = () => {
+    setError('')
+    window.location.reload()
+  }
+
   if (isLoading) {
-    return <Loader />
+    return <Loader message="Loading amazing authors..." />
+  }
+
+  // Error State
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 pt-24">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+          <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-12 shadow-xl border border-white/20">
+            <div className="w-20 h-20 bg-red-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <FaExclamationTriangle className="text-red-500 text-3xl" />
+            </div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Unable to Load Authors</h2>
+            <p className="text-gray-600 mb-8 max-w-md mx-auto">{error}</p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <button 
+                onClick={handleRetry}
+                className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold px-8 py-4 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+              >
+                <FaCloudUploadAlt />
+                <span>Try Again</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   const topAuthors = getTopAuthors()
@@ -193,6 +248,7 @@ const Authors = () => {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
                     {topAuthors.map((author, index) => {
                       const badge = getAuthorBadge(author.posts)
+                      const avatarUrl = getAvatarUrl(author.avatar)
                       
                       return (
                         <Link 
@@ -221,14 +277,20 @@ const Authors = () => {
                                 index === 1 ? 'ring-gray-400' : 
                                 'ring-amber-600'
                               } group-hover:scale-105 transition-transform duration-300`}>
-                                <img 
-                                  src={`${process.env.REACT_APP_ASSETS_URL}/uploads/${author.avatar}`} 
-                                  alt={author.name}
-                                  className="w-full h-full object-cover"
-                                  onError={(e) => {
-                                    e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(author.name)}&background=667eea&color=fff&size=200`
-                                  }}
-                                />
+                                {avatarUrl ? (
+                                  <img 
+                                    src={avatarUrl} 
+                                    alt={author.name}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(author.name)}&background=667eea&color=fff&size=200`
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="w-full h-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center">
+                                    <FaUser className="text-gray-500 text-2xl" />
+                                  </div>
+                                )}
                               </div>
                               
                               {/* Badge Icon */}
@@ -329,6 +391,8 @@ const Authors = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
                     {filteredAuthors.map((author, index) => {
                       const badge = getAuthorBadge(author.posts)
+                      const avatarUrl = getAvatarUrl(author.avatar)
+                      
                       return (
                         <Link 
                           key={author._id} 
@@ -343,14 +407,20 @@ const Authors = () => {
                             {/* Avatar */}
                             <div className="relative mb-4">
                               <div className="w-16 h-16 mx-auto rounded-xl overflow-hidden shadow-md ring-2 ring-gray-200 group-hover:ring-blue-400 group-hover:scale-105 transition-all duration-300">
-                                <img 
-                                  src={`${process.env.REACT_APP_ASSETS_URL}/uploads/${author.avatar}`} 
-                                  alt={author.name}
-                                  className="w-full h-full object-cover"
-                                  onError={(e) => {
-                                    e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(author.name)}&background=667eea&color=fff&size=150`
-                                  }}
-                                />
+                                {avatarUrl ? (
+                                  <img 
+                                    src={avatarUrl} 
+                                    alt={author.name}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(author.name)}&background=667eea&color=fff&size=150`
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="w-full h-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center">
+                                    <FaUser className="text-gray-500 text-xl" />
+                                  </div>
+                                )}
                               </div>
                               
                               {/* Online Status */}

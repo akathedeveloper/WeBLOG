@@ -21,7 +21,8 @@ import {
   FaEyeSlash,
   FaExclamationTriangle,
   FaInfoCircle,
-  FaCompress
+  FaCompress,
+  FaCloudUploadAlt
 } from 'react-icons/fa'
 import axios from 'axios'
 import Loader from '../components/Loader'
@@ -53,9 +54,22 @@ const UserProfile = () => {
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
-  // More aggressive file size limits
-  const MAX_FILE_SIZE = 1.5 * 1024 * 1024 // 1.5MB
-  const TARGET_SIZE = 1 * 1024 * 1024 // Target 1MB
+  // File size limits for Cloudinary
+  const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2MB for Cloudinary
+  const TARGET_SIZE = 1.5 * 1024 * 1024 // Target 1.5MB
+
+  // Helper function to handle avatar URLs (backward compatibility)
+  const getAvatarUrl = (avatarPath) => {
+    if (!avatarPath) return null
+    
+    // If it's already a full URL (Cloudinary), use it directly
+    if (avatarPath.startsWith('http')) {
+      return avatarPath
+    }
+    
+    // Fallback for old local avatars
+    return `${process.env.REACT_APP_ASSETS_URL}/uploads/${avatarPath}`
+  }
 
   // Redirect if not logged in
   useEffect(() => {
@@ -71,24 +85,28 @@ const UserProfile = () => {
           `${process.env.REACT_APP_BASE_URL}/users/${currentUser.id}`,
           {
             withCredentials: true,
-            headers: { Authorization: `Bearer ${token}` }
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 10000 // 10 second timeout
           }
         )
         setName(data.name)
         setEmail(data.email)
-        setOriginalEmail(data.email) // Store original email
-        setAvatarUrl(
-          `${process.env.REACT_APP_ASSETS_URL}/uploads/${data.avatar}`
-        )
-        setPreviewUrl(
-          `${process.env.REACT_APP_ASSETS_URL}/uploads/${data.avatar}`
-        )
+        setOriginalEmail(data.email)
+        
+        // Handle both Cloudinary URLs and local paths
+        const avatarSrc = getAvatarUrl(data.avatar)
+        setAvatarUrl(avatarSrc)
+        setPreviewUrl(avatarSrc)
       } catch (err) {
-        console.error(err)
+        console.error('Error loading user data:', err)
+        setError('Failed to load user data. Please refresh the page.')
       }
       setIsLoading(false)
     }
-    loadUser()
+    
+    if (currentUser?.id) {
+      loadUser()
+    }
   }, [currentUser.id, token])
 
   // Preview new avatar
@@ -97,11 +115,14 @@ const UserProfile = () => {
       const url = URL.createObjectURL(avatarFile)
       setPreviewUrl(url)
       setIsAvatarTouched(true)
+      
+      // Cleanup URL on component unmount or new file
+      return () => URL.revokeObjectURL(url)
     }
   }, [avatarFile])
 
-  // Aggressive image compression function
-  const compressImage = (file, maxWidth = 600, maxHeight = 600, targetSize = TARGET_SIZE) => {
+  // Optimized image compression for Cloudinary
+  const compressImage = (file, maxWidth = 800, maxHeight = 800, targetSize = TARGET_SIZE) => {
     return new Promise((resolve) => {
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d')
@@ -126,15 +147,17 @@ const UserProfile = () => {
         canvas.width = width
         canvas.height = height
 
-        // Draw image
+        // Draw image with better quality
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = 'high'
         ctx.drawImage(img, 0, 0, width, height)
         
-        // Start with lower quality and adjust
-        let quality = 0.4
+        // Start with reasonable quality for Cloudinary
+        let quality = 0.8
         
         const tryCompress = (q) => {
           canvas.toBlob((blob) => {
-            if (blob.size <= targetSize || q <= 0.1) {
+            if (blob.size <= targetSize || q <= 0.3) {
               resolve(blob)
             } else {
               tryCompress(q - 0.1)
@@ -167,17 +190,17 @@ const UserProfile = () => {
     try {
       let processedFile = file
 
-      // Always compress if file is larger than target or if it's over the limit
+      // Compress if file is larger than target
       if (file.size > TARGET_SIZE) {
         console.log('Compressing image from', file.size, 'bytes')
-        processedFile = await compressImage(file, 600, 600, TARGET_SIZE)
+        processedFile = await compressImage(file, 800, 800, TARGET_SIZE)
         console.log('Compressed to', processedFile.size, 'bytes')
       }
 
-      // Final size check - if still too large, try more aggressive compression
+      // Final size check for Cloudinary
       if (processedFile.size > MAX_FILE_SIZE) {
-        console.log('Still too large, applying aggressive compression...')
-        processedFile = await compressImage(file, 400, 400, TARGET_SIZE * 0.5)
+        console.log('Applying additional compression for Cloudinary...')
+        processedFile = await compressImage(file, 600, 600, TARGET_SIZE * 0.8)
       }
 
       // Last resort check
@@ -204,22 +227,35 @@ const UserProfile = () => {
     try {
       const formData = new FormData()
       formData.append('avatar', avatarFile)
+      
       const { data } = await axios.post(
         `${process.env.REACT_APP_BASE_URL}/users/change-avatar`,
         formData,
         {
           withCredentials: true,
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 30000 // 30 seconds for Cloudinary upload
         }
       )
-      const newUrl = `${process.env.REACT_APP_ASSETS_URL}/uploads/${data.avatar}`
-      setAvatarUrl(newUrl)
-      setPreviewUrl(newUrl)
+      
+      // Avatar is now a Cloudinary URL stored directly in data.avatar
+      const newAvatarUrl = data.avatar
+      setAvatarUrl(newAvatarUrl)
+      setPreviewUrl(newAvatarUrl)
       setAvatarFile(null)
       setIsAvatarTouched(false)
+      
+      // Show success message
+      setAvatarError('')
     } catch (err) {
-      console.error(err)
-      setAvatarError('Failed to update avatar. Please try again.')
+      console.error('Avatar update error:', err)
+      if (err.code === 'ECONNABORTED') {
+        setAvatarError('Upload timeout. Please try again with a smaller image.')
+      } else if (err.response?.status === 413) {
+        setAvatarError('Image file is too large. Please choose a smaller image.')
+      } else {
+        setAvatarError(err.response?.data?.message || 'Failed to update avatar. Please try again.')
+      }
     }
     setIsAvatarUpdating(false)
   }
@@ -228,34 +264,56 @@ const UserProfile = () => {
     e.preventDefault()
     setError('')
     setIsUpdating(true)
+    
     try {
-      const form = new FormData()
-      form.append('name', name)
-      form.append('email', email)
-      form.append('currentPassword', currentPassword)
-      form.append('newPassword', newPassword)
-      form.append('confirmNewPassword', confirmNewPassword)
+      const updateData = {
+        name,
+        email,
+        currentPassword,
+        newPassword,
+        confirmNewPassword
+      }
 
       const res = await axios.patch(
         `${process.env.REACT_APP_BASE_URL}/users/edit-user`,
-        form,
+        updateData,
         {
           withCredentials: true,
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000
         }
       )
+      
       if (res.status === 200) {
-        navigate('/logout')
+        // If email changed, logout for security
+        if (emailChanged) {
+          navigate('/logout')
+        } else {
+          // Clear password fields and show success
+          setCurrentPassword('')
+          setNewPassword('')
+          setConfirmNewPassword('')
+          setError('')
+          // You could add a success message here
+        }
       }
     } catch (err) {
-      setError(err.response?.data?.message || err.message)
+      console.error('Update error:', err)
+      if (err.code === 'ECONNABORTED') {
+        setError('Request timeout. Please try again.')
+      } else {
+        setError(err.response?.data?.message || 'Failed to update profile. Please try again.')
+      }
     }
     setIsUpdating(false)
   }
 
   const emailChanged = email !== originalEmail
 
-  if (isLoading) return <Loader />
+  if (isLoading) return <Loader message="Loading your profile..." />
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 pt-24 pb-16">
@@ -315,6 +373,9 @@ const UserProfile = () => {
                         src={previewUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=667eea&color=fff&size=200`}
                         alt={name}
                         className="w-32 h-32 rounded-3xl object-cover shadow-xl ring-4 ring-white mx-auto"
+                        onError={(e) => {
+                          e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=667eea&color=fff&size=200`
+                        }}
                       />
                       
                       {/* Avatar Edit Overlay */}
@@ -375,17 +436,17 @@ const UserProfile = () => {
                     <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl">
                       <div className="flex items-center space-x-2">
                         <FaCompress className="text-blue-500 text-sm animate-pulse" />
-                        <p className="text-blue-700 text-sm font-medium">Compressing image...</p>
+                        <p className="text-blue-700 text-sm font-medium">Optimizing image...</p>
                       </div>
                     </div>
                   )}
 
-                  {/* File Size Info */}
+                  {/* Avatar Upload Info */}
                   <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl">
                     <div className="flex items-center space-x-2">
-                      <FaInfoCircle className="text-blue-500 text-sm" />
+                      <FaCloudUploadAlt className="text-blue-500 text-sm" />
                       <p className="text-blue-700 text-xs">
-                        Images are automatically compressed. Max size: 1.5MB
+                        Images uploaded to secure cloud storage. Max size: 2MB
                       </p>
                     </div>
                   </div>
@@ -458,11 +519,10 @@ const UserProfile = () => {
                         </div>
                       </div>
 
-                      {/* Email Input - MADE FULLY EDITABLE */}
+                      {/* Email Input */}
                       <div className="space-y-2">
                         <label className="block text-sm font-semibold text-gray-700">
                           Email Address
-                          <span className="text-xs text-green-600 ml-2 font-normal">(Editable)</span>
                         </label>
                         <div className="relative">
                           <FaEnvelope className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -471,7 +531,7 @@ const UserProfile = () => {
                             placeholder="Email Address"
                             value={email}
                             onChange={e => setEmail(e.target.value)}
-                            disabled={isUpdating} // Only disabled during updating, not always
+                            disabled={isUpdating}
                             className="w-full pl-12 pr-4 py-3.5 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-gray-900 placeholder-gray-500 disabled:bg-gray-50 disabled:cursor-not-allowed"
                             required
                           />

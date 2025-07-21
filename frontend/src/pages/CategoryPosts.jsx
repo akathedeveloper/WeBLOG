@@ -10,7 +10,9 @@ import {
   FaEye,
   FaBookOpen,
   FaChartLine,
-  FaFilter
+  FaFilter,
+  FaExclamationTriangle,
+  FaCloudUploadAlt
 } from 'react-icons/fa'
 import Loader from '../components/Loader'
 import PostItem from '../components/PostItem'
@@ -108,23 +110,41 @@ const CategoryPosts = () => {
   const currentCategory = categoryData[category] || categoryData.Uncategorized
 
   useEffect(() => {
-    const fetch = async () => {
-      setLoad(true); setError('')
+    const fetchCategoryPosts = async () => {
+      setLoad(true); 
+      setError('')
+      
       try {
         const { data } = await axios.get(
-          `${process.env.REACT_APP_BASE_URL}/posts/categories/${category}`
+          `${process.env.REACT_APP_BASE_URL}/posts/categories/${category}`,
+          {
+            timeout: 10000 // 10 second timeout for Cloudinary-hosted content
+          }
         )
-        setPosts(data)
+        setPosts(data || [])
       } catch (err) {
-        setError(
-          err.response?.data?.message || 'Unable to fetch posts.'
-        )
+        console.error('Error fetching category posts:', err)
+        
+        // Enhanced error handling
+        if (err.code === 'ECONNABORTED') {
+          setError('Request timeout. Please check your connection and try again.')
+        } else if (err.response?.status === 404) {
+          setError(`No posts found in the ${category} category.`)
+        } else if (err.response?.status >= 500) {
+          setError('Server error. Please try again in a few moments.')
+        } else {
+          setError(err.response?.data?.message || 'Unable to fetch posts.')
+        }
       }
       setLoad(false)
     }
-    fetch()
+    
+    if (category) {
+      fetchCategoryPosts()
+    }
   }, [category])
 
+  // Calculate stats safely
   const totalWords = posts.reduce((acc, p) => {
     const words = p.description?.replace(/<[^>]+>/g, '').trim().split(/\s+/)
     return acc + (words?.length || 0)
@@ -133,25 +153,41 @@ const CategoryPosts = () => {
   const trendingPosts = posts.filter(p => (p.views || 0) > 100).length
   const totalViews = posts.reduce((acc, p) => acc + (p.views || 0), 0)
 
-  if (isLoading) return <Loader />
+  const handleRetry = () => {
+    setError('')
+    window.location.reload()
+  }
+
+  if (isLoading) {
+    return <Loader message={`Loading ${category} posts...`} />
+  }
 
   if (error) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 pt-24">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 text-center py-16">
-          <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-8 shadow-lg border border-white/20">
-            <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <FaTag className="text-red-500 text-2xl" />
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+          <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-12 shadow-xl border border-white/20">
+            <div className="w-20 h-20 bg-red-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <FaExclamationTriangle className="text-red-500 text-3xl" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-3">Something went wrong</h2>
-            <p className="text-gray-600 mb-6">{error}</p>
-            <Link 
-              to="/"
-              className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-            >
-              <FaArrowLeft />
-              <span>Back Home</span>
-            </Link>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Unable to Load Posts</h2>
+            <p className="text-gray-600 mb-8 max-w-md mx-auto">{error}</p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <button 
+                onClick={handleRetry}
+                className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold px-8 py-4 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+              >
+                <FaCloudUploadAlt />
+                <span>Try Again</span>
+              </button>
+              <Link 
+                to="/"
+                className="inline-flex items-center space-x-2 bg-white hover:bg-gray-50 text-gray-900 font-semibold px-8 py-4 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl border border-gray-200"
+              >
+                <FaArrowLeft />
+                <span>Back Home</span>
+              </Link>
+            </div>
           </div>
         </div>
       </div>

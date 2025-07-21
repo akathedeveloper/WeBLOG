@@ -15,7 +15,9 @@ import {
   FaTrophy,
   FaCrown,
   FaFire,
-  FaStar
+  FaStar,
+  FaExclamationTriangle,
+  FaCloudUploadAlt
 } from 'react-icons/fa'
 import { Link } from 'react-router-dom'
 
@@ -27,23 +29,46 @@ const AuthorPosts = () => {
   
   const { id } = useParams()
 
+  // Helper function to handle avatar URLs (backward compatibility)
+  const getAvatarUrl = (avatarPath) => {
+    if (!avatarPath) return null
+    
+    // If it's already a full URL (Cloudinary), use it directly
+    if (avatarPath.startsWith('http')) {
+      return avatarPath
+    }
+    
+    // Fallback for old local avatars
+    return `${process.env.REACT_APP_ASSETS_URL}/uploads/${avatarPath}`
+  }
+
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true)
       setError('')
       
       try {
-        // Fetch posts and author data simultaneously
+        // Fetch posts and author data simultaneously with timeout
         const [postsResponse, authorResponse] = await Promise.all([
-          axios.get(`${process.env.REACT_APP_BASE_URL}/posts/users/${id}`),
-          axios.get(`${process.env.REACT_APP_BASE_URL}/users/${id}`)
+          axios.get(`${process.env.REACT_APP_BASE_URL}/posts/users/${id}`, {
+            timeout: 10000 // 10 second timeout
+          }),
+          axios.get(`${process.env.REACT_APP_BASE_URL}/users/${id}`, {
+            timeout: 10000 // 10 second timeout
+          })
         ])
         
         setPosts(postsResponse?.data || [])
         setAuthor(authorResponse?.data || null)
       } catch (err) {
-        console.error(err)
-        setError(err.response?.data?.message || 'Failed to load author data')
+        console.error('Error fetching author data:', err)
+        if (err.code === 'ECONNABORTED') {
+          setError('Request timeout. Please check your connection and try again.')
+        } else if (err.response?.status === 404) {
+          setError('Author not found. They may have deleted their account.')
+        } else {
+          setError(err.response?.data?.message || 'Failed to load author data')
+        }
       } finally {
         setIsLoading(false)
       }
@@ -95,8 +120,13 @@ const AuthorPosts = () => {
     }
   }
 
+  const handleRetry = () => {
+    setError('')
+    window.location.reload()
+  }
+
   if (isLoading) {
-    return <Loader />
+    return <Loader message="Loading author profile..." />
   }
 
   if (error) {
@@ -105,17 +135,26 @@ const AuthorPosts = () => {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center py-20">
           <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-12 shadow-xl border border-white/20">
             <div className="w-20 h-20 bg-red-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
-              <FaUser className="text-red-500 text-3xl" />
+              <FaExclamationTriangle className="text-red-500 text-3xl" />
             </div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Oops! Something went wrong</h2>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Unable to Load Author</h2>
             <p className="text-gray-600 mb-8 max-w-md mx-auto">{error}</p>
-            <Link 
-              to="/authors"
-              className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold px-8 py-4 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-            >
-              <FaArrowLeft />
-              <span>Back to Authors</span>
-            </Link>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <button 
+                onClick={handleRetry}
+                className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold px-8 py-4 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+              >
+                <FaCloudUploadAlt />
+                <span>Try Again</span>
+              </button>
+              <Link 
+                to="/authors"
+                className="inline-flex items-center space-x-2 bg-white hover:bg-gray-50 text-gray-900 font-semibold px-8 py-4 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl border border-gray-200"
+              >
+                <FaArrowLeft />
+                <span>Back to Authors</span>
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -124,6 +163,7 @@ const AuthorPosts = () => {
 
   const badge = author ? getAuthorBadge(posts.length) : null
   const totalViews = posts.reduce((total, post) => total + (post.views || 0), 0)
+  const avatarUrl = getAvatarUrl(author?.avatar)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30">
@@ -158,14 +198,20 @@ const AuthorPosts = () => {
                   {/* Avatar */}
                   <div className="relative flex-shrink-0">
                     <div className="w-32 h-32 rounded-3xl overflow-hidden shadow-2xl ring-4 ring-white/20">
-                      <img 
-                        src={`${process.env.REACT_APP_ASSETS_URL}/uploads/${author.avatar}`} 
-                        alt={author.name}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(author.name)}&background=667eea&color=fff&size=200`
-                        }}
-                      />
+                      {avatarUrl ? (
+                        <img 
+                          src={avatarUrl} 
+                          alt={author.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(author.name)}&background=667eea&color=fff&size=200`
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center">
+                          <FaUser className="text-gray-500 text-4xl" />
+                        </div>
+                      )}
                     </div>
                     
                     {/* Badge */}

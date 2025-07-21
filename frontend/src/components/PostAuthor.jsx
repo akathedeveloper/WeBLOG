@@ -27,11 +27,20 @@ const PostAuthor = ({ authorID, createdAt, className='' }) => {
     return () => (cancelled = true)
   }, [authorID])
 
-  /* ---------------------------------------------------------------------- */
-  const avatarSrc =
-    author?.avatar
-      ? `${process.env.REACT_APP_ASSETS_URL}/uploads/${author.avatar}`
-      : null
+  /* Helper function to handle avatar URLs (backward compatibility) */
+  const getAvatarUrl = (avatarPath) => {
+    if (!avatarPath) return null
+    
+    // If it's already a full URL (Cloudinary), use it directly
+    if (avatarPath.startsWith('http')) {
+      return avatarPath
+    }
+    
+    // Fallback for old local avatars
+    return `${process.env.REACT_APP_ASSETS_URL}/uploads/${avatarPath}`
+  }
+
+  const avatarSrc = getAvatarUrl(author?.avatar)
 
   return (
     <Link 
@@ -50,6 +59,10 @@ const PostAuthor = ({ authorID, createdAt, className='' }) => {
               alt={author.name} 
               loading="lazy" 
               className="w-10 h-10 rounded-full object-cover ring-2 ring-gray-200 group-hover:ring-blue-300 transition-all duration-200"
+              onError={(e) => {
+                // Fallback to UI avatars if image fails to load
+                e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(author.name || 'User')}&background=667eea&color=fff&size=80`
+              }}
             />
             <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
           </div>

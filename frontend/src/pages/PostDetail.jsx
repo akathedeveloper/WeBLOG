@@ -42,6 +42,19 @@ const PostDetail = () => {
     fetchPost()
   }, [id])
 
+  // Helper function to handle image URLs (backward compatibility)
+  const getImageUrl = (imagePath) => {
+    if (!imagePath) return '/api/placeholder/800/400'
+    
+    // If it's already a full URL (Cloudinary), use it directly
+    if (imagePath.startsWith('http')) {
+      return imagePath
+    }
+    
+    // Fallback for old local images
+    return `${process.env.REACT_APP_ASSETS_URL}/uploads/${imagePath}`
+  }
+
   const getReadingTime = (html) => {
     const text = html.replace(/<[^>]+>/g, '').trim()
     const words = text.split(/\s+/).length
@@ -68,6 +81,27 @@ const PostDetail = () => {
       'Uncategorized': 'from-gray-500 to-gray-600'
     }
     return colors[category] || 'from-gray-500 to-gray-600'
+  }
+
+  // Share functionality
+  const handleShare = async () => {
+    const shareData = {
+      title: post.title,
+      text: `Check out this article: ${post.title}`,
+      url: window.location.href
+    }
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData)
+      } else {
+        // Fallback: copy to clipboard
+        await navigator.clipboard.writeText(window.location.href)
+        alert('Link copied to clipboard!')
+      }
+    } catch (error) {
+      console.error('Error sharing:', error)
+    }
   }
 
   if (isLoading) return <Loader />
@@ -145,6 +179,14 @@ const PostDetail = () => {
                     <FaTag className="text-xs" />
                     <span>{post.category}</span>
                   </div>
+
+                  {/* Views Count (if available) */}
+                  {post.views !== undefined && (
+                    <div className="flex items-center space-x-2 text-gray-600">
+                      <FaEye className="text-sm" />
+                      <span className="text-sm font-medium">{post.views.toLocaleString()} views</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Action Buttons */}
@@ -166,15 +208,30 @@ const PostDetail = () => {
 
                   {/* Reader Actions */}
                   <div className="flex items-center space-x-3">
-                    <button className="flex items-center space-x-2 px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-gray-700 rounded-lg font-medium transition-colors duration-200">
+                    <button 
+                      className="flex items-center space-x-2 px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-gray-700 rounded-lg font-medium transition-colors duration-200"
+                      onClick={() => {
+                        // Add like functionality here
+                        console.log('Like clicked')
+                      }}
+                    >
                       <FaHeart className="text-sm" />
                       <span>Like</span>
                     </button>
-                    <button className="flex items-center space-x-2 px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-gray-700 rounded-lg font-medium transition-colors duration-200">
+                    <button 
+                      className="flex items-center space-x-2 px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-gray-700 rounded-lg font-medium transition-colors duration-200"
+                      onClick={() => {
+                        // Add bookmark functionality here
+                        console.log('Bookmark clicked')
+                      }}
+                    >
                       <FaBookmark className="text-sm" />
                       <span>Save</span>
                     </button>
-                    <button className="flex items-center space-x-2 px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-gray-700 rounded-lg font-medium transition-colors duration-200">
+                    <button 
+                      className="flex items-center space-x-2 px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-gray-700 rounded-lg font-medium transition-colors duration-200"
+                      onClick={handleShare}
+                    >
                       <FaShareAlt className="text-sm" />
                       <span>Share</span>
                     </button>
@@ -187,7 +244,7 @@ const PostDetail = () => {
             <div className="mb-12">
               <div className="relative rounded-3xl overflow-hidden shadow-2xl">
                 <img
-                  src={`${process.env.REACT_APP_ASSETS_URL}/uploads/${post.thumbnail}`}
+                  src={getImageUrl(post.thumbnail)}
                   alt={post.title}
                   className="w-full h-64 md:h-96 object-cover"
                   onError={(e) => {
@@ -223,11 +280,23 @@ const PostDetail = () => {
                   </p>
                 </div>
                 <div className="flex items-center space-x-4">
-                  <button className="flex items-center space-x-2 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 font-medium px-6 py-3 rounded-xl transition-all duration-200 transform hover:scale-105">
+                  <button 
+                    className="flex items-center space-x-2 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 font-medium px-6 py-3 rounded-xl transition-all duration-200 transform hover:scale-105"
+                    onClick={() => {
+                      // Add like functionality here
+                      console.log('Like post clicked')
+                    }}
+                  >
                     <FaHeart />
                     <span>Like Post</span>
                   </button>
-                  <button className="flex items-center space-x-2 bg-blue-50 hover:bg-blue-100 text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-300 font-medium px-6 py-3 rounded-xl transition-all duration-200 transform hover:scale-105">
+                  <button 
+                    className="flex items-center space-x-2 bg-blue-50 hover:bg-blue-100 text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-300 font-medium px-6 py-3 rounded-xl transition-all duration-200 transform hover:scale-105"
+                    onClick={() => {
+                      // Add comment functionality here
+                      console.log('Comment clicked')
+                    }}
+                  >
                     <FaComment />
                     <span>Comment</span>
                   </button>

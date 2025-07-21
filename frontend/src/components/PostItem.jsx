@@ -19,6 +19,19 @@ const PostItem = ({
   const shortTitle = title.length > 60 ? title.slice(0, 57) + '…' : title
   const readMinutes = Math.max(1, Math.ceil(stripTags(description).split(/\s+/).length / 200))
 
+  // Helper function to handle image URLs (backward compatibility)
+  const getImageUrl = (imagePath) => {
+    if (!imagePath) return '/placeholder.svg'
+    
+    // If it's already a full URL (Cloudinary), use it directly
+    if (imagePath.startsWith('http')) {
+      return imagePath
+    }
+    
+    // Fallback for old local images
+    return `${process.env.REACT_APP_ASSETS_URL}/uploads/${imagePath}`
+  }
+
   // Category colors
   const getCategoryColor = (category) => {
     const colors = {
@@ -49,7 +62,7 @@ const PostItem = ({
           <Link to={`/posts/${postID}`} className="relative block md:w-80 md:flex-shrink-0">
             <div className="aspect-video md:aspect-square md:h-full relative overflow-hidden">
               <img
-                src={`${process.env.REACT_APP_ASSETS_URL}/uploads/${thumbnail}`}
+                src={getImageUrl(thumbnail)}
                 alt={title}
                 loading="lazy"
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
@@ -113,7 +126,7 @@ const PostItem = ({
       <Link to={`/posts/${postID}`} className="relative block">
         <div className="aspect-video relative overflow-hidden">
           <img
-            src={`${process.env.REACT_APP_ASSETS_URL}/uploads/${thumbnail}`}
+            src={getImageUrl(thumbnail)}
             alt={title}
             loading="lazy"
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
