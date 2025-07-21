@@ -15,7 +15,8 @@ import {
   FaFeather,
   FaFileAlt,
   FaClock,
-  FaHashtag
+  FaHashtag,
+  FaExclamationTriangle
 } from 'react-icons/fa'
 
 const CreatePost = () => {
@@ -29,10 +30,14 @@ const CreatePost = () => {
   const [showPreview, setShowPreview] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [wordCount, setWordCount] = useState(0)
+  const [uploadProgress, setUploadProgress] = useState(0)
   
   const navigate = useNavigate()
   const { currentUser } = useContext(UserContext)
   const token = currentUser?.token
+
+  // File size limit (2MB)
+  const MAX_FILE_SIZE = 2 * 1024 * 1024
 
   // Redirect to login page for any user who isn't logged in
   useEffect(() => {
@@ -117,8 +122,26 @@ const CreatePost = () => {
     return colors[category] || 'from-gray-500 to-gray-600'
   }
 
+  const validateFile = (file) => {
+    // Check file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    if (!allowedTypes.includes(file.type)) {
+      setError('Please select a valid image file (JPEG, PNG, or WebP)')
+      return false
+    }
+
+    // Check file size
+    if (file.size > MAX_FILE_SIZE) {
+      setError('Image file is too large. Please choose a file smaller than 2MB.')
+      return false
+    }
+
+    return true
+  }
+
   const handleThumbnailChange = (file) => {
-    if (file) {
+    if (file && validateFile(file)) {
+      setError('')
       setThumbnail(file)
       const reader = new FileReader()
       reader.onload = (e) => {
@@ -156,14 +179,16 @@ const CreatePost = () => {
     e.preventDefault()
     setError('')
     setIsLoading(true)
+    setUploadProgress(0)
 
+    // Validation
     if (!title.trim()) {
       setError('Please enter a title')
       setIsLoading(false)
       return
     }
 
-    if (!description.trim()) {
+    if (!description.trim() || description.trim() === '<p><br></p>') {
       setError('Please enter post content')
       setIsLoading(false)
       return
@@ -187,16 +212,42 @@ const CreatePost = () => {
         postData, 
         {
           withCredentials: true, 
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 60000, // 60 seconds timeout for image upload
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round(
+              (progressEvent.loaded * 100) / progressEvent.total
+            )
+            setUploadProgress(percentCompleted)
+          }
         }
       )
+      
       if (response.status === 201) {
+        // Success - redirect to home
         navigate('/')
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create post')
+      console.error('Post creation error:', err)
+      
+      // Enhanced error handling
+      if (err.code === 'ECONNABORTED') {
+        setError('Upload timeout. Please check your connection and try again with a smaller image.')
+      } else if (err.response?.status === 413) {
+        setError('Image file is too large. Please choose a smaller image.')
+      } else if (err.response?.status === 422) {
+        setError(err.response.data.message || 'Please check all required fields.')
+      } else if (err.response?.status >= 500) {
+        setError('Server error. Please try again in a few moments.')
+      } else if (err.response?.status === 401) {
+        setError('Your session has expired. Please log in again.')
+        setTimeout(() => navigate('/login'), 2000)
+      } else {
+        setError(err.response?.data?.message || 'Failed to create post. Please try again.')
+      }
     } finally {
       setIsLoading(false)
+      setUploadProgress(0)
     }
   }
 
@@ -278,12 +329,27 @@ const CreatePost = () => {
           {error && (
             <div className="mb-8">
               <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start space-x-3">
-                <div className="flex-shrink-0">
-                  <svg className="w-5 h-5 text-red-400 mt-0.5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
-                  </svg>
-                </div>
+                <FaExclamationTriangle className="text-red-500 text-lg mt-0.5 flex-shrink-0" />
                 <p className="text-red-700 text-sm font-medium">{error}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Upload Progress */}
+          {isLoading && uploadProgress > 0 && (
+            <div className="mb-8">
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <div className="flex items-center space-x-3 mb-2">
+                  <FaCloudUploadAlt className="text-blue-600" />
+                  <span className="text-blue-800 font-medium">Uploading your post...</span>
+                </div>
+                <div className="w-full bg-blue-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+                <p className="text-blue-700 text-sm mt-1">{uploadProgress}% complete</p>
               </div>
             </div>
           )}
@@ -407,7 +473,9 @@ const CreatePost = () => {
                     {isLoading ? (
                       <>
                         <FaSpinner className="animate-spin" />
-                        <span>Creating Post...</span>
+                        <span>
+                          {uploadProgress > 0 ? `Creating Post... ${uploadProgress}%` : 'Creating Post...'}
+                        </span>
                       </>
                     ) : (
                       <>

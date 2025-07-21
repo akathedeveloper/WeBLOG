@@ -3,10 +3,18 @@ const jwt = require('jsonwebtoken')
 const fs = require('fs')
 const path = require('path')
 const fileUpload = require('express-fileupload')
+const cloudinary = require('cloudinary').v2
 const {v4: uuid} = require('uuid')
 
 const User = require('../models/userModel')
 const HttpError = require('../models/errorModel')
+
+// Configure Cloudinary
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+})
 
 // =========================Register a New User==========================
 // Post: api/users/register
@@ -112,50 +120,76 @@ const changeAvatar = async(req,res,next)=>{
             return next(new HttpError("User not found.", 404))
         }
 
-        //delete old avatar if exists (FIXED ERROR HANDLING)
-        if(user.avatar){
-            const oldAvatarPath = path.join(__dirname, '..', 'uploads', user.avatar)
-            try {
-                // Check if file exists before trying to delete
-                if(fs.existsSync(oldAvatarPath)){
-                    fs.unlinkSync(oldAvatarPath)
-                }
-            } catch (deleteError) {
-                console.log('Could not delete old avatar:', deleteError.message)
-                // Don't return error - continue with upload
-            }
-        }
-
         const {avatar} = req.files
-        
-        // INCREASED FILE SIZE LIMIT (was causing issues with compressed images)
+
+        // Check file size
         if (avatar.size > 2000000){ // 2MB limit
             return next(new HttpError("Profile picture too big. Should be less than 2MB", 422))
         }
 
-        let fileName = avatar.name
-        let splittedFilename = fileName.split('.')
-        let newFileName = splittedFilename[0] + uuid() + '.' + splittedFilename[splittedFilename.length - 1]
-        
-        const uploadPath = path.join(__dirname, '..', 'uploads', newFileName)
-        
-        avatar.mv(uploadPath, async (err) => {
-            if (err){
-                return next(new HttpError("File upload failed.", 500))
+        // Validate temp file path
+        if(!avatar.tempFilePath) {
+            return next(new HttpError("Invalid file upload. Please try again.", 422))
+        }
+
+        try {
+            // Delete old avatar from Cloudinary if it exists and is a Cloudinary URL
+            if(user.avatar && user.avatar.includes('cloudinary.com')){
+                const urlParts = user.avatar.split('/')
+                const publicIdWithExt = urlParts[urlParts.length - 1]
+                const publicId = publicIdWithExt.split('.')[0]
+                const folderPath = `avatars/${publicId}`
+                
+                try {
+                    await cloudinary.uploader.destroy(folderPath)
+                } catch (deleteError) {
+                    console.log('Could not delete old avatar from Cloudinary:', deleteError.message)
+                    // Continue with upload even if deletion fails
+                }
+            } else if(user.avatar) {
+                // Handle old local avatar deletion
+                const oldAvatarPath = path.join(__dirname, '..', 'uploads', user.avatar)
+                try {
+                    if(fs.existsSync(oldAvatarPath)){
+                        fs.unlinkSync(oldAvatarPath)
+                    }
+                } catch (deleteError) {
+                    console.log('Could not delete old local avatar:', deleteError.message)
+                }
             }
 
-            try {
-                const updatedAvatar = await User.findByIdAndUpdate(req.user.id, {avatar: newFileName}, {new: true})
-                if(!updatedAvatar){
-                    return next(new HttpError("Avatar couldn't be changed.", 422))
-                }
-                res.status(200).json(updatedAvatar)
-            } catch (updateError) {
-                return next(new HttpError("Database update failed.", 500))
+            // Upload new avatar to Cloudinary
+            const uploadResult = await cloudinary.uploader.upload(avatar.tempFilePath, {
+                folder: 'avatars',
+                public_id: `avatar_${uuid()}`,
+                resource_type: 'auto',
+                quality: 'auto',
+                fetch_format: 'auto',
+                transformation: [
+                    { width: 400, height: 400, crop: 'fill' },
+                    { quality: 'auto' }
+                ]
+            })
+
+            const updatedAvatar = await User.findByIdAndUpdate(
+                req.user.id, 
+                {avatar: uploadResult.secure_url}, // Store Cloudinary URL
+                {new: true}
+            ).select('-password')
+
+            if(!updatedAvatar){
+                return next(new HttpError("Avatar couldn't be changed.", 422))
             }
-        })
+
+            res.status(200).json(updatedAvatar)
+
+        } catch (uploadError) {
+            console.error('Avatar upload error:', uploadError)
+            return next(new HttpError("Failed to upload avatar. Please try again.", 500))
+        }
     } 
     catch (error) {
+        console.error('Change avatar error:', error)
         return next(new HttpError("Avatar change failed.", 500))
     }
 }

@@ -19,13 +19,16 @@ import {
   FaShare,
   FaTimes,
   FaChevronDown,
-  FaBookmark
+  FaBookmark,
+  FaCloudUploadAlt,
+  FaExclamationTriangle
 } from 'react-icons/fa'
 
 const Posts = () => {
   const [posts, setPosts] = useState([])
   const [filteredPosts, setFilteredPosts] = useState([])
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [sortBy, setSortBy] = useState('newest')
@@ -35,18 +38,22 @@ const Posts = () => {
   const categories = [
     'all', 'Agriculture', 'Business', 'Education', 'Entertainment', 
     'Art', 'Investment', 'Technology', 'Travel', 'Health', 'Food', 
-    'Sports', 'Fashion', 'Science', 'Music'
+    'Sports', 'Fashion', 'Science', 'Music', 'Weather', 'Uncategorized'
   ]
 
   useEffect(() => {
     const fetchPosts = async () => {
       setIsLoading(true)
+      setError('')
       try {
-        const response = await axios.get("http://localhost:5001/api/posts")
+        const response = await axios.get(`${process.env.REACT_APP_BASE_URL}/posts`, {
+          timeout: 10000 // 10 second timeout
+        })
         setPosts(response?.data || [])
         setFilteredPosts(response?.data || [])
       } catch (err) {
-        console.log(err)
+        console.error('Error fetching posts:', err)
+        setError(err.response?.data?.message || 'Failed to load posts. Please try again.')
         setPosts([])
         setFilteredPosts([])
       }
@@ -68,10 +75,11 @@ const Posts = () => {
 
     // Filter by search term
     if (searchTerm.trim()) {
+      const searchLower = searchTerm.toLowerCase()
       filtered = filtered.filter(post =>
-        post.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        post.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        post.category.toLowerCase().includes(searchTerm.toLowerCase())
+        post.title.toLowerCase().includes(searchLower) ||
+        post.description.toLowerCase().includes(searchLower) ||
+        post.category.toLowerCase().includes(searchLower)
       )
     }
 
@@ -82,6 +90,9 @@ const Posts = () => {
         break
       case 'oldest':
         filtered.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+        break
+      case 'popular':
+        filtered.sort((a, b) => (b.views || 0) - (a.views || 0))
         break
       case 'title':
         filtered.sort((a, b) => a.title.localeCompare(b.title))
@@ -103,6 +114,12 @@ const Posts = () => {
     setShowFilters(false)
   }
 
+  const handleRetry = () => {
+    setError('')
+    // Re-trigger the fetch by updating a dependency or calling fetchPosts directly
+    window.location.reload()
+  }
+
   const getCategoryIcon = (category) => {
     const icons = {
       'Agriculture': '🌱',
@@ -118,7 +135,9 @@ const Posts = () => {
       'Sports': '⚽',
       'Fashion': '👗',
       'Science': '🔬',
-      'Music': '🎵'
+      'Music': '🎵',
+      'Weather': '🌤️',
+      'Uncategorized': '📄'
     }
     return icons[category] || '📄'
   }
@@ -138,13 +157,41 @@ const Posts = () => {
       'Sports': 'from-teal-500 to-teal-600',
       'Fashion': 'from-rose-500 to-rose-600',
       'Science': 'from-violet-500 to-violet-600',
-      'Music': 'from-emerald-500 to-emerald-600'
+      'Music': 'from-emerald-500 to-emerald-600',
+      'Weather': 'from-sky-500 to-sky-600',
+      'Uncategorized': 'from-gray-500 to-gray-600'
     }
     return colors[category] || 'from-gray-500 to-gray-600'
   }
 
   if (isLoading) {
-    return <Loader />
+    return <Loader message="Loading amazing stories..." />
+  }
+
+  // Error State
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 pt-24">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+          <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-12 shadow-xl border border-white/20">
+            <div className="w-20 h-20 bg-red-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <FaExclamationTriangle className="text-red-500 text-3xl" />
+            </div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Unable to Load Posts</h2>
+            <p className="text-gray-600 mb-8 max-w-md mx-auto">{error}</p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <button 
+                onClick={handleRetry}
+                className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold px-8 py-4 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+              >
+                <FaCloudUploadAlt />
+                <span>Try Again</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -321,6 +368,17 @@ const Posts = () => {
                   >
                     <FaCalendarAlt />
                     <span>Oldest First</span>
+                  </button>
+                  <button
+                    className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-medium transition-all duration-200 ${
+                      sortBy === 'popular' 
+                        ? 'bg-blue-600 text-white shadow-lg' 
+                        : 'bg-white/80 text-gray-700 hover:bg-gray-50 border border-gray-200'
+                    }`}
+                    onClick={() => setSortBy('popular')}
+                  >
+                    <FaFire />
+                    <span>Most Popular</span>
                   </button>
                   <button
                     className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-medium transition-all duration-200 ${

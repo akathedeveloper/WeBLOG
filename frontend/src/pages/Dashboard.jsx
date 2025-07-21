@@ -20,13 +20,16 @@ import {
   FaClock,
   FaArrowUp,
   FaFileAlt,
-  FaUsers
+  FaUsers,
+  FaExclamationTriangle,
+  FaCloudUploadAlt
 } from 'react-icons/fa'
 
 const Dashboard = () => {
   const [posts, setPosts] = useState([])
   const [filteredPosts, setFilteredPosts] = useState([])
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [filterCategory, setFilterCategory] = useState('all')
   const [viewMode, setViewMode] = useState('grid')
@@ -38,7 +41,24 @@ const Dashboard = () => {
   const { currentUser } = useContext(UserContext)
   const token = currentUser?.token
 
-  const categories = ['all', 'Agriculture', 'Business', 'Education', 'Entertainment', 'Art', 'Investment', 'Technology', 'Travel']
+  const categories = [
+    'all', 'Agriculture', 'Business', 'Education', 'Entertainment', 
+    'Art', 'Investment', 'Technology', 'Travel', 'Health', 'Food', 
+    'Sports', 'Fashion', 'Science', 'Music', 'Weather', 'Uncategorized'
+  ]
+
+  // Helper function to handle image URLs (backward compatibility)
+  const getImageUrl = (imagePath) => {
+    if (!imagePath) return null
+    
+    // If it's already a full URL (Cloudinary), use it directly
+    if (imagePath.startsWith('http')) {
+      return imagePath
+    }
+    
+    // Fallback for old local images
+    return `${process.env.REACT_APP_ASSETS_URL}/uploads/${imagePath}`
+  }
 
   // Redirect to login page for any user who isn't logged in
   useEffect(() => {
@@ -50,12 +70,14 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchPosts = async () => {
       setIsLoading(true)
+      setError('')
       try {
         const response = await axios.get(
           `${process.env.REACT_APP_BASE_URL}/posts/users/${id}`,
           { 
             withCredentials: true, 
-            headers: { Authorization: `Bearer ${token}` }
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 10000 // 10 second timeout
           }
         )
         setPosts(response.data)
@@ -63,17 +85,27 @@ const Dashboard = () => {
         
         // Calculate stats
         const total = response.data.length
-        const published = response.data.filter(post => post.status === 'published').length
+        const published = response.data.filter(post => post.status === 'published' || !post.status).length
         const drafts = total - published
         const views = response.data.reduce((acc, post) => acc + (post.views || 0), 0)
         setStats({ total, published, drafts, views })
         
       } catch (error) {
-        console.log(error)
+        console.error('Error fetching posts:', error)
+        if (error.code === 'ECONNABORTED') {
+          setError('Request timeout. Please check your connection and try again.')
+        } else if (error.response?.status === 404) {
+          setError('User not found.')
+        } else {
+          setError('Failed to load your posts. Please try again.')
+        }
       }
       setIsLoading(false)
     }
-    fetchPosts()
+    
+    if (id && token) {
+      fetchPosts()
+    }
   }, [id, token])
 
   // Filter and search posts
@@ -103,8 +135,9 @@ const Dashboard = () => {
 
   const truncateText = (text, maxLength) => {
     if (!text) return ''
-    if (text.length <= maxLength) return text
-    return text.substr(0, maxLength) + '...'
+    const strippedText = text.replace(/<[^>]+>/g, '') // Remove HTML tags
+    if (strippedText.length <= maxLength) return strippedText
+    return strippedText.substr(0, maxLength) + '...'
   }
 
   const getTimeAgo = (dateString) => {
@@ -112,7 +145,9 @@ const Dashboard = () => {
     const postDate = new Date(dateString)
     const diffInHours = Math.floor((now - postDate) / (1000 * 60 * 60))
     
-    if (diffInHours < 24) {
+    if (diffInHours < 1) {
+      return 'Just now'
+    } else if (diffInHours < 24) {
       return `${diffInHours}h ago`
     } else if (diffInHours < 168) { // 7 days
       return `${Math.floor(diffInHours / 24)}d ago`
@@ -121,8 +156,39 @@ const Dashboard = () => {
     }
   }
 
+  const handleRetry = () => {
+    setError('')
+    window.location.reload()
+  }
+
   if (isLoading) {
-    return <Loader />
+    return <Loader message="Loading your dashboard..." />
+  }
+
+  // Error State
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 pt-24">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+          <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-12 shadow-xl border border-white/20">
+            <div className="w-20 h-20 bg-red-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <FaExclamationTriangle className="text-red-500 text-3xl" />
+            </div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Unable to Load Dashboard</h2>
+            <p className="text-gray-600 mb-8 max-w-md mx-auto">{error}</p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <button 
+                onClick={handleRetry}
+                className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold px-8 py-4 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+              >
+                <FaCloudUploadAlt />
+                <span>Try Again</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -315,85 +381,99 @@ const Dashboard = () => {
                 : 'space-y-6'
             }`}>
               {filteredPosts.length > 0 ? (
-                filteredPosts.map((post, index) => (
-                  <article 
-                    key={post._id} 
-                    className={`group bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 hover:shadow-2xl transition-all duration-300 overflow-hidden hover:-translate-y-2 ${
-                      viewMode === 'list' ? 'flex flex-col md:flex-row' : ''
-                    }`}
-                    style={{ animationDelay: `${index * 0.1}s` }}
-                  >
-                    {/* Thumbnail */}
-                    <div className={`relative overflow-hidden ${
-                      viewMode === 'list' ? 'md:w-80 md:flex-shrink-0' : 'aspect-video'
-                    }`}>
-                      <img 
-                        src={`${process.env.REACT_APP_ASSETS_URL}/uploads/${post.thumbnail}`} 
-                        alt={post.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        onError={(e) => {
-                          e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDMwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIzMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xMzAgMTAwSDEwNlYxMDZIMTMwVjEwMFoiIGZpbGw9IiM5Q0E0QUYiLz4KPHBhdGggZD0iTTEwNiAxMDBIMTMwVjEyNEgxMDZWMTAwWiIgZmlsbD0iIzlDQTRBRiIvPgo8L3N2Zz4='
-                        }}
-                      />
-                      {/* Status Badge */}
-                      <div className="absolute top-4 right-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                          (post.status || 'published') === 'published' 
-                            ? 'bg-green-500 text-white' 
-                            : 'bg-orange-500 text-white'
-                        }`}>
-                          {post.status || 'Published'}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    {/* Content */}
-                    <div className="p-6 flex-1 flex flex-col">
-                      {/* Meta */}
-                      <div className="flex items-center space-x-4 text-sm text-gray-600 mb-3">
-                        <div className="flex items-center space-x-1">
-                          <FaTags className="text-blue-500" />
-                          <span>{post.category}</span>
+                filteredPosts.map((post, index) => {
+                  const imageUrl = getImageUrl(post.thumbnail)
+                  
+                  return (
+                    <article 
+                      key={post._id} 
+                      className={`group bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 hover:shadow-2xl transition-all duration-300 overflow-hidden hover:-translate-y-2 ${
+                        viewMode === 'list' ? 'flex flex-col md:flex-row' : ''
+                      }`}
+                      style={{ animationDelay: `${index * 0.1}s` }}
+                    >
+                      {/* Thumbnail */}
+                      <div className={`relative overflow-hidden ${
+                        viewMode === 'list' ? 'md:w-80 md:flex-shrink-0' : 'aspect-video'
+                      }`}>
+                        <img 
+                          src={imageUrl || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDMwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIzMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xMzAgMTAwSDEwNlYxMDZIMTMwVjEwMFoiIGZpbGw9IiM5Q0E0QUYiLz4KPHBhdGggZD0iTTEwNiAxMDBIMTMwVjEyNEgxMDZWMTAwWiIgZmlsbD0iIzlDQTRBRiIvPgo8L3N2Zz4='} 
+                          alt={post.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          onError={(e) => {
+                            e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDMwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIzMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xMzAgMTAwSDEwNlYxMDZIMTMwVjEwMFoiIGZpbGw9IiM5Q0E0QUYiLz4KPHBhdGggZD0iTTEwNiAxMDBIMTMwVjEyNEgxMDZWMTAwWiIgZmlsbD0iIzlDQTRBRiIvPgo8L3N2Zz4='
+                          }}
+                        />
+                        {/* Status Badge */}
+                        <div className="absolute top-4 right-4">
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            (post.status || 'published') === 'published' 
+                              ? 'bg-green-500 text-white' 
+                              : 'bg-orange-500 text-white'
+                          }`}>
+                            {post.status || 'Published'}
+                          </span>
                         </div>
-                        <div className="flex items-center space-x-1">
-                          <FaCalendarAlt className="text-gray-400" />
-                          <span>{getTimeAgo(post.createdAt)}</span>
-                        </div>
+                        
+                        {/* Views Badge */}
+                        {post.views && (
+                          <div className="absolute bottom-4 left-4">
+                            <div className="flex items-center space-x-1 px-2 py-1 bg-black/70 backdrop-blur-sm text-white text-xs rounded-full">
+                              <FaEye />
+                              <span>{post.views.toLocaleString()}</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                       
-                      {/* Title */}
-                      <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-blue-600 transition-colors duration-200 line-clamp-2">
-                        {post.title}
-                      </h3>
-                      
-                      {/* Description (List view only) */}
-                      {viewMode === 'list' && (
-                        <p className="text-gray-600 mb-4 flex-grow">
-                          {truncateText(post.description || '', 120)}
-                        </p>
-                      )}
+                      {/* Content */}
+                      <div className="p-6 flex-1 flex flex-col">
+                        {/* Meta */}
+                        <div className="flex items-center space-x-4 text-sm text-gray-600 mb-3">
+                          <div className="flex items-center space-x-1">
+                            <FaTags className="text-blue-500" />
+                            <span>{post.category}</span>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <FaCalendarAlt className="text-gray-400" />
+                            <span>{getTimeAgo(post.createdAt)}</span>
+                          </div>
+                        </div>
+                        
+                        {/* Title */}
+                        <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-blue-600 transition-colors duration-200 line-clamp-2">
+                          {post.title}
+                        </h3>
+                        
+                        {/* Description (List view only) */}
+                        {viewMode === 'list' && (
+                          <p className="text-gray-600 mb-4 flex-grow">
+                            {truncateText(post.description || '', 120)}
+                          </p>
+                        )}
 
-                      {/* Actions */}
-                      <div className="flex items-center space-x-3 pt-4 border-t border-gray-100">
-                        <Link 
-                          to={`/posts/${post._id}`} 
-                          className="flex items-center space-x-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors duration-200 text-sm font-medium"
-                        >
-                          <FaEye />
-                          <span>View</span>
-                        </Link>
-                        <Link 
-                          to={`/posts/${post._id}/edit`} 
-                          className="flex items-center space-x-2 px-4 py-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors duration-200 text-sm font-medium"
-                        >
-                          <FaEdit />
-                          <span>Edit</span>
-                        </Link>
-                        <DeletePost postId={post._id} />
+                        {/* Actions */}
+                        <div className="flex items-center space-x-3 pt-4 border-t border-gray-100">
+                          <Link 
+                            to={`/posts/${post._id}`} 
+                            className="flex items-center space-x-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors duration-200 text-sm font-medium"
+                          >
+                            <FaEye />
+                            <span>View</span>
+                          </Link>
+                          <Link 
+                            to={`/posts/${post._id}/edit`} 
+                            className="flex items-center space-x-2 px-4 py-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors duration-200 text-sm font-medium"
+                          >
+                            <FaEdit />
+                            <span>Edit</span>
+                          </Link>
+                          <DeletePost postId={post._id} />
+                        </div>
                       </div>
-                    </div>
-                  </article>
-                ))
+                    </article>
+                  )
+                })
               ) : (
                 <div className="col-span-full flex flex-col items-center justify-center py-16 px-4">
                   <div className="w-24 h-24 bg-gray-100 rounded-3xl flex items-center justify-center mb-6">
