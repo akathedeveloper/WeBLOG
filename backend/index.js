@@ -16,7 +16,7 @@ app.use(express.urlencoded({ extended: true }));
 
 const allowedOrigins = [
   "http://localhost:3000",
-  "https://akathedeveloper-weblog.vercel.app/"
+  "https://akathedeveloper-weblog.vercel.app"
 ];
 
 const corsOptions = {
