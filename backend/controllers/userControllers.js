@@ -1,14 +1,12 @@
-const bcrypt= require('bcryptjs')
+const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const fs = require('fs')
 const path = require('path')
 const fileUpload = require('express-fileupload')
 const {v4: uuid} = require('uuid')
 
-
 const User = require('../models/userModel')
 const HttpError = require('../models/errorModel')
-
 
 // =========================Register a New User==========================
 // Post: api/users/register
@@ -23,13 +21,11 @@ const registerUser = async(req,res,next)=>{
 
         const newEmail=email.toLowerCase()
 
-
         //Checking if the email is already registered
         const emailExits=await User.findOne({email:newEmail})
         if(emailExits) {
             return next (new HttpError("This Email is already Registered", 422))
-            }
-
+        }
 
         if((password.trim()).length < 6){
             return next(new HttpError("Password must be at least 6 characters long", 422))
@@ -48,8 +44,6 @@ const registerUser = async(req,res,next)=>{
         return next(new HttpError("User registration failed.", 422))
     }
 }
-
-
 
 // =========================Login a registered user==========================
 // Post: api/users/login
@@ -83,10 +77,8 @@ const loginUser = async(req,res,next)=>{
     }
 }
 
-
-
 // =========================User Profile==========================
-// Post: api/users/:id
+// GET: api/users/:id
 //Protected
 
 const getUser = async(req,res,next)=>{
@@ -100,68 +92,85 @@ const getUser = async(req,res,next)=>{
     } 
     catch (error) {
         return next(new HttpError(error))
-        
     }
 }
 
-
 // =========================Change user Avatar(profile picture)==========================
-// Post: api/users/register
+// POST: api/users/change-avatar
 //Protected
 
 const changeAvatar = async(req,res,next)=>{
     try {
-        if(!req.files.avatar){
+        // Check if files exist
+        if(!req.files || !req.files.avatar){
             return next(new HttpError("Please choose an image.", 422))
         }
+
         //find user from database
         const user = await User.findById(req.user.id)
+        if(!user){
+            return next(new HttpError("User not found.", 404))
+        }
 
-        //delete old avatar if exists
+        //delete old avatar if exists (FIXED ERROR HANDLING)
         if(user.avatar){
-            fs.unlink(path.join(__dirname, '..', 'uploads', user.avatar), (err)=>{
-                if(err){
-                    return next(new HttpError(err))
+            const oldAvatarPath = path.join(__dirname, '..', 'uploads', user.avatar)
+            try {
+                // Check if file exists before trying to delete
+                if(fs.existsSync(oldAvatarPath)){
+                    fs.unlinkSync(oldAvatarPath)
                 }
-            })
+            } catch (deleteError) {
+                console.log('Could not delete old avatar:', deleteError.message)
+                // Don't return error - continue with upload
+            }
         }
 
         const {avatar} = req.files
-        if (avatar.size>50000){
-            return next(new HttpError("Profile picture too big. Should be less than 500kb"), 422)
+        
+        // INCREASED FILE SIZE LIMIT (was causing issues with compressed images)
+        if (avatar.size > 2000000){ // 2MB limit
+            return next(new HttpError("Profile picture too big. Should be less than 2MB", 422))
         }
 
-        let fileName;
-        fileName=avatar.name
+        let fileName = avatar.name
         let splittedFilename = fileName.split('.')
-        let newFileName = splittedFilename[0] + uuid() + '.' + splittedFilename[splittedFilename.length -1]
-        avatar.mv(path.join(__dirname, '..', 'uploads', newFileName), async (err) =>{
+        let newFileName = splittedFilename[0] + uuid() + '.' + splittedFilename[splittedFilename.length - 1]
+        
+        const uploadPath = path.join(__dirname, '..', 'uploads', newFileName)
+        
+        avatar.mv(uploadPath, async (err) => {
             if (err){
-                return next(new HttpError(err))
+                return next(new HttpError("File upload failed.", 500))
             }
 
-            const updatedAvatar = await User.findByIdAndUpdate(req.user.id, {avatar:newFileName}, {new:true})
-            if(!updatedAvatar){
-                return next(new HttpError("Avatar couldn't be changed.", 422))
+            try {
+                const updatedAvatar = await User.findByIdAndUpdate(req.user.id, {avatar: newFileName}, {new: true})
+                if(!updatedAvatar){
+                    return next(new HttpError("Avatar couldn't be changed.", 422))
+                }
+                res.status(200).json(updatedAvatar)
+            } catch (updateError) {
+                return next(new HttpError("Database update failed.", 500))
             }
-            res.status(200).json(updatedAvatar)
         })
     } 
     catch (error) {
-        return next(new HttpError(error))
+        return next(new HttpError("Avatar change failed.", 500))
     }
 }
 
-
 // =========================Edit User Details (from profile)==========================
-// Post: api/users/edit-user
+// PATCH: api/users/edit-user
 //Protected
 
 const editUser = async(req,res,next)=>{
     try{
         const {name, email, currentPassword, newPassword, confirmNewPassword} = req.body;
-        if(!name || !email || !currentPassword || !newPassword){
-            return next(new HttpError("Fill in all fields.", 422))
+        
+        // FIXED: Only require name and email as mandatory fields
+        if(!name || !email){
+            return next(new HttpError("Name and email are required.", 422))
         }
 
         //get user from database
@@ -171,42 +180,66 @@ const editUser = async(req,res,next)=>{
         }
 
         //make sure new email doesn't already exist
-        const emailExist = await User.findOne({email})
+        const newEmail = email.toLowerCase()
+        const emailExist = await User.findOne({email: newEmail})
 
-        //we want to update ther details with/without changing the email(which is a unique id because we use it to login)
-        if(emailExist && (emailExist._id != req.user.id)){
+        //we want to update their details with/without changing the email
+        if(emailExist && (emailExist._id.toString() !== req.user.id)){
             return next(new HttpError("Email already exist.", 422))
-
         }
 
-        //compare current password to db password 
-        const validateUserPassword = await bcrypt.compare(currentPassword, user.password)
-        if(!validateUserPassword){
-            return next(new HttpError("Invalid current password", 422))
-        } 
+        // FIXED: Handle password change as OPTIONAL
+        if(currentPassword || newPassword || confirmNewPassword) {
+            // If any password field is provided, all are required
+            if(!currentPassword || !newPassword || !confirmNewPassword){
+                return next(new HttpError("All password fields are required to change password.", 422))
+            }
 
-        //compare new passwords
-        if(newPassword!==confirmNewPassword){
-            return next(new HttpError("New passwords do not match.", 422))
+            //compare current password to db password 
+            const validateUserPassword = await bcrypt.compare(currentPassword, user.password)
+            if(!validateUserPassword){
+                return next(new HttpError("Current password is incorrect.", 422))
+            } 
+
+            //compare new passwords
+            if(newPassword !== confirmNewPassword){
+                return next(new HttpError("New passwords do not match.", 422))
+            }
+
+            if(newPassword.length < 6){
+                return next(new HttpError("New password must be at least 6 characters long.", 422))
+            }
+
+            //hash new password 
+            const salt = await bcrypt.genSalt(10);  
+            const hash = await bcrypt.hash(newPassword, salt);
+
+            //update user info in database WITH new password
+            const newInfo = await User.findByIdAndUpdate(
+                req.user.id, 
+                {name, email: newEmail, password: hash}, 
+                {new: true}
+            ).select('-password')
+            
+            return res.status(200).json(newInfo)
+        } else {
+            //update user info in database WITHOUT changing password
+            const newInfo = await User.findByIdAndUpdate(
+                req.user.id, 
+                {name, email: newEmail}, 
+                {new: true}
+            ).select('-password')
+            
+            return res.status(200).json(newInfo)
         }
-
-        //hash new password 
-        const salt = await bcrypt.genSalt(10);  
-        const hash = await bcrypt.hash(newPassword, salt);
-
-        //update user info in database
-        const newInfo = await User.findByIdAndUpdate(req.user.id, {name, email, password: hash}, {new: true})
-        res.status(200).json(newInfo)
-
     }   
     catch(error){
-        return next(new HttpError(error))
+        return next(new HttpError("User update failed.", 500))
     }
 }
 
-
 // =========================Get Authors==========================
-// Post: api/users/authors
+// GET: api/users/
 //Unprotected
 
 const getAuthors = async(req,res,next)=>{
@@ -217,6 +250,5 @@ const getAuthors = async(req,res,next)=>{
         return next(new HttpError(error))
     }
 }
-
 
 module.exports={registerUser,loginUser,getUser,changeAvatar, editUser, getAuthors}
