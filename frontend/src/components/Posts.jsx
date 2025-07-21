@@ -46,14 +46,27 @@ const Posts = () => {
       setIsLoading(true)
       setError('')
       try {
-        const response = await axios.get(`${process.env.REACT_APP_BASE_URL}/posts`, {
-          timeout: 10000 // 10 second timeout
+        // Use environment variable with fallback to production URL
+        const baseURL = process.env.REACT_APP_BASE_URL || "https://weblog-qbvs.onrender.com"
+        const response = await axios.get(`${baseURL}/api/posts`, {
+          timeout: 15000 // 15 second timeout for production
         })
         setPosts(response?.data || [])
         setFilteredPosts(response?.data || [])
       } catch (err) {
         console.error('Error fetching posts:', err)
-        setError(err.response?.data?.message || 'Failed to load posts. Please try again.')
+        
+        // Enhanced error handling
+        if (err.code === 'ECONNABORTED') {
+          setError('Request timeout. Please check your connection and try again.')
+        } else if (err.response?.status >= 500) {
+          setError('Server error. Please try again in a few moments.')
+        } else if (err.response?.status === 404) {
+          setError('Posts not found. Please check the server connection.')
+        } else {
+          setError(err.response?.data?.message || 'Failed to load posts. Please try again.')
+        }
+        
         setPosts([])
         setFilteredPosts([])
       }
@@ -116,7 +129,6 @@ const Posts = () => {
 
   const handleRetry = () => {
     setError('')
-    // Re-trigger the fetch by updating a dependency or calling fetchPosts directly
     window.location.reload()
   }
 
