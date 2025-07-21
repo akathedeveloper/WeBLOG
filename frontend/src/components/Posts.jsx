@@ -42,7 +42,7 @@ const Posts = () => {
     const fetchPosts = async () => {
       setIsLoading(true)
       try {
-        const response = await axios.get("http://localhost:5001/api/posts")
+        const response = await axios.get("https://weblog-qbvs.onrender.com/api/posts")
         setPosts(response?.data || [])
         setFilteredPosts(response?.data || [])
       } catch (err) {
