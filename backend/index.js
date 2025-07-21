@@ -21,5 +21,10 @@ app.use('/api/posts',postRoutes)
 app.use(notFound)
 app.use(errorHandler)
 
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ success: true, message: 'Backend is running!' });
+});
+
+
 connect(process.env.MONGO_URL).then(app.listen(process.env.PORT || 5000, () =>console.log(`Server 
 running on port ${process.env.PORT}`))).catch((error) => {console.log(error);});
