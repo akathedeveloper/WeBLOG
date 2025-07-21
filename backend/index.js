@@ -10,34 +10,33 @@ const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 
 const app = express();
 
-// Middleware to parse JSON and URL-encoded bodies
+// Body parsers
 app.use(express.json({ extended: true }));
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ CORS setup with hardcoded allowed origins
 const allowedOrigins = [
   "http://localhost:3000",
-  "https://weblog-tawny.vercel.app"
+  "https://akathedeveloper-weblog.vercel.app/"
 ];
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like curl or Postman)
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
-  })
-);
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+};
 
-// Enable file uploads
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
+// File upload middleware
 app.use(upload());
 
-// Serve uploaded files statically
+// Serve static files (uploads like images)
 app.use("/uploads", express.static(__dirname + "/uploads"));
 
 // ✅ Health check route
@@ -45,7 +44,7 @@ app.get("/api/health", (req, res) => {
   res.status(200).json({ success: true, message: "Backend is running!" });
 });
 
-// Main API routes
+// Routes
 app.use("/api/users", userRoutes);
 app.use("/api/posts", postRoutes);
 
@@ -53,7 +52,7 @@ app.use("/api/posts", postRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
-// Connect to MongoDB and start the server
+// MongoDB connection and server start
 connect(process.env.MONGO_URL)
   .then(() => {
     const PORT = process.env.PORT || 5000;
